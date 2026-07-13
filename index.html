@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shift Assistant - Registro Técnico</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Librerías para PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        body { font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; }
+        .card { background: white; border: 1px solid #cbd5e1; padding: 1rem; margin-bottom: 1rem; }
+        .card-header { background-color: #e2e8f0; padding: 0.5rem; font-weight: bold; font-size: 0.9rem; border-bottom: 1px solid #cbd5e1; margin: -1rem -1rem 1rem -1rem; color: #1e293b; text-transform: uppercase; letter-spacing: 0.05em; }
+        input, select, textarea { border: 1px solid #94a3b8; padding: 0.25rem 0.5rem; width: 100%; font-size: 0.75rem; background-color: #fff; }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: #0f172a; }
+        label { font-size: 0.75rem; font-weight: 600; color: #334155; margin-bottom: 0.1rem; display: block; }
+        table th { background-color: #f8fafc; border: 1px solid #cbd5e1; padding: 0.4rem; font-size: 0.75rem; }
+        table td { border: 1px solid #cbd5e1; padding: 0.4rem; }
+        /* Estilos para el modal de PDF */
+        #pdfModal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        }
+        #pdfModal.active {
+            display: flex;
+        }
+        #pdfContent {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            max-width: 800px;
+            max-height: 90vh;
+            overflow: auto;
+            box-shadow: 0 0 30px rgba(0,0,0,0.3);
+            width: 100%;
+        }
+        #pdfLoading {
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            color: #1e293b;
+            padding: 40px;
+        }
+    </style>
+</head>
+<body class="p-4 max-w-7xl mx-auto text-gray-900">
+
+    <div class="flex justify-between items-center mb-4 border-b border-gray-300 pb-2">
+        <div>
+            <h1 class="text-xl font-bold uppercase tracking-wider text-slate-800">Shift Assistant // Reporte Operativo</h1>
+        </div>
+        <div class="space-x-2">
+            <button onclick="loadPreviousShift()" class="text-xs bg-slate-200 border border-slate-400 px-3 py-1 hover:bg-slate-300 transition">Duplicar Turno Anterior</button>
+            <button onclick="clearForm()" class="text-xs bg-red-100 text-red-800 border border-red-300 px-3 py-1 hover:bg-red-200 transition">Limpiar Todo</button>
+        </div>
+    </div>
+
+    <form id="shiftForm" class="space-y-4">
+        <!-- HEADER -->
+        <div class="card grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div><label>Fecha</label><input type="date" id="fecha" required></div>
+            <div>
+                <label>Turno</label>
+                <select id="turno"><option value="AM">AM (06:00 - 18:00)</option><option value="PM">PM (18:00 - 06:00)</option></select>
+            </div>
+            <div>
+                <label>Entrega</label>
+                <select id="entrega" required>
+                    <option value="">Seleccione...</option><option value="Jenry Fonseca">Jenry Fonseca</option>
+                    <option value="Mario Orellano">Mario Orellano</option><option value="Luis Valdes">Luis Valdes</option>
+                    <option value="Otro">Otro</option>
+                </select>
+            </div>
+            <div>
+                <label>Recibe</label>
+                <select id="recibe" required>
+                    <option value="">Seleccione...</option><option value="Jenry Fonseca">Jenry Fonseca</option>
+                    <option value="Mario Orellano">Mario Orellano</option><option value="Luis Valdes">Luis Valdes</option>
+                    <option value="Otro">Otro</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- 1. PRODUCCIÓN -->
+        <div class="card">
+            <div class="card-header">1. PARÁMETROS DE PRODUCCIÓN Y ESTADO DE LÍNEAS</div>
+            <div id="productionContainer" class="grid grid-cols-1 gap-3"></div>
+        </div>
+
+        <!-- 2. TIEMPOS MUERTOS -->
+        <div class="card">
+            <div class="flex justify-between items-center bg-slate-200 p-2 mb-3 -mx-4 -mt-4 border-b border-slate-300">
+                <div class="font-bold text-sm text-slate-800 tracking-wider">2. TIEMPOS MUERTOS Y PUNTOS CRÍTICOS</div>
+                <button type="button" onclick="addDowntime()" class="bg-slate-700 text-white px-2 py-1 text-xs hover:bg-slate-800 transition">+ Registrar Falla</button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-xs text-left border-collapse">
+                    <thead>
+                        <tr>
+                            <th class="w-1/6">Equipo</th><th class="w-24">Inicio</th>
+                            <th class="w-24">Fin</th><th class="w-16">Min</th>
+                            <th class="w-1/4">Causa</th><th>Acción realizada</th>
+                            <th class="w-8"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="downtimeBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 3. TAREAS Y GESTIÓN -->
+        <div class="card">
+            <div class="flex justify-between items-center bg-slate-200 p-2 mb-3 -mx-4 -mt-4 border-b border-slate-300">
+                <div class="font-bold text-sm text-slate-800 tracking-wider">3. GESTIÓN OPERATIVA (TAREAS)</div>
+                <button type="button" onclick="addTask()" class="bg-slate-700 text-white px-2 py-1 text-xs hover:bg-slate-800 transition">+ Nueva Tarea</button>
+            </div>
+            <div id="tasksContainer" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+        </div>
+
+        <!-- 4. NOVEDADES -->
+        <div class="card">
+            <div class="flex justify-between items-center bg-slate-200 p-2 mb-3 -mx-4 -mt-4 border-b border-slate-300">
+                <div class="font-bold text-sm text-slate-800 tracking-wider">4. NOVEDADES REPORTADAS</div>
+                <button type="button" onclick="addUpdate()" class="bg-slate-700 text-white px-2 py-1 text-xs hover:bg-slate-800 transition">+ Novedad</button>
+            </div>
+            <div id="updatesContainer" class="space-y-2"></div>
+        </div>
+
+        <!-- BOTONES -->
+        <div class="flex justify-end mt-4 mb-8 gap-3">
+            <button type="button" onclick="generatePDF()" class="bg-green-700 text-white px-6 py-3 text-sm font-bold tracking-wider hover:bg-green-800 transition shadow">
+                GENERAR PDF
+            </button>
+            <button type="button" onclick="generateHandover()" class="bg-blue-800 text-white px-6 py-3 text-sm font-bold tracking-wider hover:bg-blue-900 transition shadow">
+                GENERAR REPORTE NATIVO EN OUTLOOK
+            </button>
+        </div>
+    </form>
+
+    <!-- MODAL PARA PDF -->
+    <div id="pdfModal">
+        <div id="pdfContent">
+            <div id="pdfLoading">Generando PDF, espere...</div>
+        </div>
+    </div>
+
+    <script>
+        const PROCESSES = ['Saponificación', 'S6000', 'S10000', 'S15000', 'Blanqueo'];
+        const ENGINEERS = ['Jenry Fonseca', 'Mario Orellano', 'Luis Valdes', 'Otro'];
+        const RESPONSABLES = ['Equipo Interno', 'Patio Tanque', 'Mecánico', 'Eléctrico', 'Automatizador', 'Locativo', 'Metrólogo', 'Calidad', 'Acabados', 'Logística', 'Múltidisciplinar'];
+        const PRIORITIES = ['Alta', 'Media', 'Baja'];
+        const STATUSES = ['Pendiente', 'En proceso', 'En espera (On Hold)', 'Finalizada'];
+
+        document.addEventListener("DOMContentLoaded", () => {
+            initDefaultValues();
+            renderProductionSections();
+            loadDraft(); 
+            document.getElementById('shiftForm').addEventListener('change', saveDraft);
+            document.getElementById('shiftForm').addEventListener('keyup', saveDraft);
+            
+            // Filtro dinámico mutuo para los selectores de Entrega y Recibe
+            const selEntrega = document.getElementById('entrega');
+            const selRecibe = document.getElementById('recibe');
+            
+            function filterEngineers() {
+                const valEntrega = selEntrega.value;
+                const valRecibe = selRecibe.value;
+                
+                Array.from(selEntrega.options).forEach(opt => {
+                    if (opt.value === valRecibe && opt.value !== "" && opt.value !== "Otro") {
+                        opt.style.display = 'none';
+                    } else {
+                        opt.style.display = '';
+                    }
+                });
+                
+                Array.from(selRecibe.options).forEach(opt => {
+                    if (opt.value === valEntrega && opt.value !== "" && opt.value !== "Otro") {
+                        opt.style.display = 'none';
+                    } else {
+                        opt.style.display = '';
+                    }
+                });
+            }
+
+            selEntrega.addEventListener('change', filterEngineers);
+            selRecibe.addEventListener('change', filterEngineers);
+            filterEngineers();
+        });
+
+        function initDefaultValues() {
+            const now = new Date();
+            document.getElementById('fecha').value = now.toISOString().split('T')[0];
+            const hour = now.getHours();
+            document.getElementById('turno').value = (hour >= 6 && hour < 18) ? 'AM' : 'PM';
+        }
+
+        function renderProductionSections() {
+            const container = document.getElementById('productionContainer');
+            container.innerHTML = '';
+            PROCESSES.forEach(proc => {
+                if(proc === 'Saponificación') {
+                    container.innerHTML += `
+                    <div class="border border-slate-300 p-2 bg-slate-50" data-process="${proc}">
+                        <div class="flex justify-between items-center mb-2 border-b border-slate-300 pb-1">
+                            <h3 class="font-bold text-sm text-slate-800">${proc} (Preparación)</h3>
+                            <div class="flex gap-2 items-center">
+                                <label class="mb-0">Estado:</label>
+                                <select class="prod-estado w-24"><option>Operando</option><option>Detenido</option></select>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-5 gap-2">
+                            <div class="border border-slate-200 p-2 bg-white"><label>Fondo 1 (Nivel/Contenido)</label><input type="text" class="sap-f1" placeholder="Ej: 80% Base Blanca">
+                                <select class="sap-a1 mt-1"><option>OK </option><option>En uso</option><option>Requiere Formular</option><option>Requiere Reformular</option></select></div>
+                            <div class="border border-slate-200 p-2 bg-white"><label>Fondo 2 (Nivel/Contenido)</label><input type="text" class="sap-f2" placeholder="Ej: Vacío">
+                                <select class="sap-a2 mt-1"><option>OK </option><option>En uso</option><option>Requiere Formular</option><option>Requiere Reformular</option></select></div>
+                            <div class="border border-slate-200 p-2 bg-white"><label>Fondo 3 (Nivel/Contenido)</label><input type="text" class="sap-f3" placeholder="Ej: 50% Base Color">
+                                <select class="sap-a3 mt-1"><option>OK </option><option>En uso</option><option>Requiere Formular</option><option>Requiere Reformular</option></select></div>
+                            <div class="border border-slate-200 p-2 bg-white"><label>Blend-4 (Nivel/Contenido)</label><input type="text" class="sap-b4" placeholder="Ej: Nivel o estado...">
+                                <select class="sap-ab4 mt-1"><option>OK </option><option>En uso</option><option>Requiere Formular</option><option>Requiere Reformular</option></select></div>
+                            <div class="border border-slate-200 p-2 bg-white"><label>Blend-6 (Nivel/Contenido)</label><input type="text" class="sap-b6" placeholder="Ej: Nivel o estado...">
+                                <select class="sap-ab6 mt-1"><option>OK </option><option>En uso</option><option>Requiere Formular</option><option>Requiere Reformular</option></select></div>
+                        </div>
+                        <div class="mt-2">
+                            <label>Observaciones (${proc}):</label>
+                            <textarea class="prod-obs" maxlength="500" rows="2" placeholder="Novedades específicas del área..."></textarea>
+                        </div>
+                    </div>`;
+                } else {
+                    let checksHTML = "";
+                    if(proc === 'S10000') {
+                        checksHTML = `
+                        <div class="col-span-4 md:col-span-9 flex items-center gap-4 bg-slate-100 p-1 border border-slate-200 text-xs my-1">
+                            <span class="font-bold">Trabajando desde:</span>
+                            <label class="inline-flex items-center gap-1 mb-0 font-normal"><input type="checkbox" class="chk-s10k" value="blend-4"> blend-4</label>
+                            <label class="inline-flex items-center gap-1 mb-0 font-normal"><input type="checkbox" class="chk-s10k" value="blend-6"> blend-6</label>
+                        </div>`;
+                    } else if(proc === 'S6000') {
+                        checksHTML = `
+                        <div class="col-span-4 md:col-span-9 flex items-center gap-4 bg-slate-100 p-1 border border-slate-200 text-xs my-1">
+                            <span class="font-bold">Alimentando de:</span>
+                            <label class="inline-flex items-center gap-1 mb-0 font-normal"><input type="checkbox" class="chk-s6k" value="fondo 1"> fondo 1</label>
+                            <label class="inline-flex items-center gap-1 mb-0 font-normal"><input type="checkbox" class="chk-s6k" value="fondo 2"> fondo 2</label>
+                            <label class="inline-flex items-center gap-1 mb-0 font-normal"><input type="checkbox" class="chk-s6k" value="fondo 3"> fondo 3</label>
+                        </div>`;
+                    }
+
+                    container.innerHTML += `
+                    <div class="border border-slate-300 p-2" data-process="${proc}">
+                        <div class="flex justify-between items-center mb-2 border-b border-slate-300 pb-1">
+                            <h3 class="font-bold text-sm text-slate-800">${proc}</h3>
+                            <div class="flex gap-3 items-center">
+                                ${['S6000', 'S10000', 'S15000'].includes(proc) ? `
+                                <div class="flex gap-1 items-center">
+                                    <label class="mb-0 text-xs">Tolva Empaque:</label>
+                                    <select class="prod-empaque w-44 text-xs"><option value="">Seleccione...</option><option value="SACOS_25">SACOS_25</option><option value="BB_750">BB_750</option><option value="BB_900">BB_900</option></select>
+                                </div>` : ''}
+                                <div class="flex gap-2 items-center">
+                                    <label class="mb-0">Estado:</label>
+                                    <select class="prod-estado w-24"><option>Operando</option><option>Detenido</option><option>Standby</option></select>
+                                </div>
+                            </div>
+                        </div>
+                        ${checksHTML}
+                        <div class="grid grid-cols-4 md:grid-cols-9 gap-1">
+                            <div class="col-span-2"><label>Producto</label><input type="text" class="prod-prod"></div>
+                            <div><label>Lote</label><input type="text" class="prod-lotes"></div>
+                            <div><label>Flujo</label><input type="text" class="prod-flujo"></div>
+                            <div><label>Presión</label><input type="text" class="prod-presion"></div>
+                            <div><label>Vacío</label><input type="text" class="prod-vacio"></div>
+                            <div><label>T. Camisas</label><input type="text" class="prod-temp"></div>
+                            <div><label>Chill. Ent</label><input type="text" class="prod-chillere"></div>
+                            <div><label>Chill. Sal</label><input type="text" class="prod-chillerf"></div>
+                        </div>
+                        <div class="mt-2">
+                            <label>Observaciones o Calidad (max 500 carac.):</label>
+                            <textarea class="prod-obs" maxlength="500" rows="2" placeholder="Detalles operativos, comportamiento del flujo, etc..."></textarea>
+                        </div>
+                    </div>`;
+                }
+            });
+        }
+
+        function addDowntime(data = {}) {
+            const id = Date.now();
+            const tr = document.createElement('tr');
+            tr.id = `dt-${id}`;
+            tr.innerHTML = `
+                <td><input type="text" class="dt-equipo" value="${data.equipo || ''}"></td>
+                <td><input type="time" class="dt-inicio" value="${data.inicio || ''}" onchange="calcDuration(${id})"></td>
+                <td><input type="time" class="dt-fin" value="${data.fin || ''}" onchange="calcDuration(${id})"></td>
+                <td><input type="number" class="dt-min bg-slate-100 text-center font-bold" value="${data.minutos || ''}" readonly tabindex="-1"></td>
+                <td><input type="text" class="dt-causa" value="${data.causa || ''}"></td>
+                <td><input type="text" class="dt-accion" value="${data.accion || ''}"></td>
+                <td class="text-center"><button type="button" onclick="this.closest('tr').remove(); saveDraft();" class="text-red-600 font-bold">X</button></td>
+            `;
+            document.getElementById('downtimeBody').appendChild(tr);
+        }
+
+        function calcDuration(id) {
+            const row = document.getElementById(`dt-${id}`);
+            const start = row.querySelector('.dt-inicio').value;
+            const end = row.querySelector('.dt-fin').value;
+            if (start && end) {
+                const [h1, m1] = start.split(':').map(Number);
+                const [h2, m2] = end.split(':').map(Number);
+                let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+                if (diff < 0) diff += 24 * 60;
+                row.querySelector('.dt-min').value = diff;
+                saveDraft();
+            }
+        }
+
+        function addTask(data = {}) {
+            const div = document.createElement('div');
+            div.className = "border border-slate-300 p-2 bg-white relative";
+            div.innerHTML = `
+                <button type="button" onclick="this.parentElement.remove(); saveDraft();" class="absolute top-1 right-2 text-slate-400 hover:text-red-500 font-bold">&times;</button>
+                <div class="grid grid-cols-2 gap-2 mb-2 pr-4">
+                    <div><label>Proceso/Área</label><select class="tk-proceso">${PROCESSES.map(p => `<option ${data.proceso === p ? 'selected' : ''}>${p}</option>`).join('')}</select></div>
+                    <div><label>Prioridad</label><select class="tk-prio">${PRIORITIES.map(p => `<option ${data.prio === p ? 'selected' : ''}>${p}</option>`).join('')}</select></div>
+                </div>
+                <div class="mb-2"><label>Descripción</label><input type="text" class="tk-desc" value="${data.desc || ''}"></div>
+                <div class="grid grid-cols-2 gap-2 mb-2">
+                    <div><label>Responsable</label><select class="tk-resp">${RESPONSABLES.map(r => `<option ${data.resp === r ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
+                    <div><label>Estado</label><select class="tk-estado">${STATUSES.map(s => `<option ${data.estado === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div><label>Acción Inmediata</label><input type="text" class="tk-inmediata" value="${data.inmediata || ''}" placeholder="Acción tomada al momento..."></div>
+                    <div><label>Acción Correctiva</label><input type="text" class="tk-correctiva" value="${data.correctiva || ''}" placeholder="Acción de fondo / definitiva..."></div>
+                </div>
+            `;
+            document.getElementById('tasksContainer').appendChild(div);
+        }
+
+        function addUpdate(data = {}) {
+            const tipos = ['Mantenimiento', 'Laboratorio', 'Calidad', 'Seguridad', 'Logística'];
+            const div = document.createElement('div');
+            div.className = "flex gap-2 items-center border border-slate-300 p-1 bg-white";
+            div.innerHTML = `
+                <input type="time" class="up-hora w-24" value="${data.hora || ''}">
+                <select class="up-tipo w-32">${tipos.map(t => `<option ${data.tipo === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
+                <input type="text" class="up-desc flex-1" value="${data.desc || ''}" placeholder="Detalle...">
+                <button type="button" onclick="this.parentElement.remove(); saveDraft();" class="text-red-500 font-bold px-2">X</button>
+            `;
+            document.getElementById('updatesContainer').appendChild(div);
+        }
+
+        function getFormData() {
+            let data = {
+                fecha: document.getElementById('fecha').value, turno: document.getElementById('turno').value,
+                entrega: document.getElementById('entrega').value, recibe: document.getElementById('recibe').value,
+                produccion: [], downtime: [], tareas: [], novedades: []
+            };
+
+            document.querySelectorAll('#productionContainer > div').forEach(div => {
+                let proc = div.dataset.process;
+                if(proc === 'Saponificación') {
+                    data.produccion.push({
+                        proceso: proc, estado: div.querySelector('.prod-estado').value,
+                        f1: div.querySelector('.sap-f1').value, a1: div.querySelector('.sap-a1').value,
+                        f2: div.querySelector('.sap-f2').value, a2: div.querySelector('.sap-a2').value,
+                        f3: div.querySelector('.sap-f3').value, a3: div.querySelector('.sap-a3').value,
+                        b4: div.querySelector('.sap-b4').value, ab4: div.querySelector('.sap-ab4').value,
+                        b6: div.querySelector('.sap-b6').value, ab6: div.querySelector('.sap-ab6').value,
+                        obs: div.querySelector('.prod-obs').value
+                    });
+                } else {
+                    let checks = [];
+                    div.querySelectorAll('input[type="checkbox"]:checked').forEach(chk => checks.push(chk.value));
+                    let empaqueEl = div.querySelector('.prod-empaque');
+                    data.produccion.push({
+                        proceso: proc, estado: div.querySelector('.prod-estado').value,
+                        empaque: empaqueEl ? empaqueEl.value : '',
+                        lotes: div.querySelector('.prod-lotes').value, prod: div.querySelector('.prod-prod').value,
+                        flujo: div.querySelector('.prod-flujo').value, presion: div.querySelector('.prod-presion').value,
+                        vacio: div.querySelector('.prod-vacio').value, temp: div.querySelector('.prod-temp').value,
+                        chillere: div.querySelector('.prod-chillere').value, chillerf: div.querySelector('.prod-chillerf').value, 
+                        checks: checks,
+                        obs: div.querySelector('.prod-obs').value
+                    });
+                }
+            });
+
+            document.querySelectorAll('#downtimeBody tr').forEach(tr => { data.downtime.push({ equipo: tr.querySelector('.dt-equipo').value, inicio: tr.querySelector('.dt-inicio').value, fin: tr.querySelector('.dt-fin').value, minutos: tr.querySelector('.dt-min').value, causa: tr.querySelector('.dt-causa').value, accion: tr.querySelector('.dt-accion').value }); });
+            document.querySelectorAll('#tasksContainer > div').forEach(div => { data.tareas.push({ proceso: div.querySelector('.tk-proceso').value, prio: div.querySelector('.tk-prio').value, desc: div.querySelector('.tk-desc').value, resp: div.querySelector('.tk-resp').value, estado: div.querySelector('.tk-estado').value, inmediata: div.querySelector('.tk-inmediata').value, correctiva: div.querySelector('.tk-correctiva').value }); });
+            document.querySelectorAll('#updatesContainer > div').forEach(div => { data.novedades.push({ hora: div.querySelector('.up-hora').value, tipo: div.querySelector('.up-tipo').value, desc: div.querySelector('.up-desc').value }); });
+            return data;
+        }
+
+        function saveDraft() { localStorage.setItem('shift_draft', JSON.stringify(getFormData())); }
+
+        function loadDraft() { const draft = localStorage.getItem('shift_draft'); if (draft) fillFormFromData(JSON.parse(draft)); }
+
+        function loadPreviousShift() {
+            const last = localStorage.getItem('shift_last_sent');
+            if (last) {
+                let data = JSON.parse(last);
+                data.fecha = document.getElementById('fecha').value; 
+                data.entrega = data.recibe; data.recibe = "";
+                data.tareas = data.tareas.filter(t => t.estado !== 'Finalizada');
+                data.downtime = []; data.novedades = [];
+                fillFormFromData(data);
+                const event = new Event('change');
+                document.getElementById('entrega').dispatchEvent(event);
+            } else { alert("No hay registro de un turno anterior."); }
+        }
+
+        function clearForm() { if(confirm("¿Limpiar todo?")) { localStorage.removeItem('shift_draft'); location.reload(); } }
+
+        function fillFormFromData(data) {
+            if(data.fecha) document.getElementById('fecha').value = data.fecha;
+            if(data.turno) document.getElementById('turno').value = data.turno;
+            if(data.entrega) document.getElementById('entrega').value = data.entrega;
+            if(data.recibe) document.getElementById('recibe').value = data.recibe;
+
+            const prods = document.querySelectorAll('#productionContainer > div');
+            data.produccion.forEach((pData, index) => {
+                if(prods[index]) {
+                    prods[index].querySelector('.prod-estado').value = pData.estado || 'Operando';
+                    if(pData.proceso === 'Saponificación') {
+                        prods[index].querySelector('.sap-f1').value = pData.f1 || ''; prods[index].querySelector('.sap-a1').value = pData.a1 || 'OK / En uso';
+                        prods[index].querySelector('.sap-f2').value = pData.f2 || ''; prods[index].querySelector('.sap-a2').value = pData.a2 || 'OK / En uso';
+                        prods[index].querySelector('.sap-f3').value = pData.f3 || ''; prods[index].querySelector('.sap-a3').value = pData.a3 || 'OK / En uso';
+                        prods[index].querySelector('.sap-b4').value = pData.b4 || ''; prods[index].querySelector('.sap-ab4').value = pData.ab4 || 'OK / En uso';
+                        prods[index].querySelector('.sap-b6').value = pData.b6 || ''; prods[index].querySelector('.sap-ab6').value = pData.ab6 || 'OK / En uso';
+                    } else {
+                        let empaqueEl = prods[index].querySelector('.prod-empaque');
+                        if(empaqueEl) empaqueEl.value = pData.empaque || '';
+                        prods[index].querySelector('.prod-lotes').value = pData.lotes || '';
+                        prods[index].querySelector('.prod-prod').value = pData.prod || '';
+                        prods[index].querySelector('.prod-flujo').value = pData.flujo || '';
+                        prods[index].querySelector('.prod-presion').value = pData.presion || '';
+                        prods[index].querySelector('.prod-vacio').value = pData.vacio || '';
+                        prods[index].querySelector('.prod-temp').value = pData.temp || '';
+                        prods[index].querySelector('.prod-chillere').value = pData.chillere || '';
+                        prods[index].querySelector('.prod-chillerf').value = pData.chillerf || '';
+                        prods[index].querySelectorAll('input[type="checkbox"]').forEach(chk => {
+                            chk.checked = pData.checks && Array.isArray(pData.checks) ? pData.checks.includes(chk.value) : false;
+                        });
+                    }
+                    prods[index].querySelector('.prod-obs').value = pData.obs || '';
+                }
+            });
+
+            document.getElementById('downtimeBody').innerHTML = ''; if(data.downtime) data.downtime.forEach(dt => addDowntime(dt));
+            document.getElementById('tasksContainer').innerHTML = ''; if(data.tareas) data.tareas.forEach(tk => addTask(tk));
+            document.getElementById('updatesContainer').innerHTML = ''; if(data.novedades) data.novedades.forEach(up => addUpdate(up));
+            
+            const event = new Event('change');
+            document.getElementById('entrega').dispatchEvent(event);
+        }
+
+        // FUNCIÓN AUXILIAR PARA UNIR ELEMENTOS CON COMAS Y LA "y" FINAL CORRECTAMENTE
+        function formatListWithY(items) {
+            const cleanItems = items.filter(i => i !== null && i !== undefined && i.toString().trim() !== "");
+            if (cleanItems.length === 0) return "";
+            if (cleanItems.length === 1) return cleanItems[0];
+            const lastItem = cleanItems.pop();
+            return cleanItems.join(', ') + ' y ' + lastItem;
+        }
+
+        // ========== NUEVA FUNCIÓN GENERAR PDF (CON MODAL VISIBLE) ==========
+        function generatePDF() {
+            const d = getFormData();
+            if (!d.entrega || !d.recibe) {
+                alert("Por favor, indique quién entrega y quién recibe.");
+                return;
+            }
+
+            // Construir el HTML del reporte (idéntico al del correo)
+            let htmlProduccion = "";
+            d.produccion.forEach(p => {
+                let statusColor = p.estado === 'Operando' ? '#059669' : (p.estado === 'Standby' ? '#d97706' : '#dc2626');
+                let headerEmpaque = p.empaque ? ` &nbsp;|&nbsp; <span style="color: #475569; font-size: 11px; font-weight: normal;">Tolva Empaque: <strong style="color: #1e293b;">${p.empaque}</strong></span>` : '';
+                
+                htmlProduccion += `<div style="margin-bottom: 12px; border: 1px solid #ccc; background-color: #fcfcfc;">
+                    <div style="background-color: #e2e8f0; padding: 4px 8px; font-weight: bold; font-size: 13px; border-bottom: 1px solid #ccc;">
+                        ${p.proceso} &nbsp;|&nbsp; <span style="color: ${statusColor};">${p.estado}</span>${headerEmpaque}
+                    </div>
+                    <div style="padding: 8px;">`;
+
+                if(p.proceso === 'Saponificación') {
+                    htmlProduccion += `
+                        <table style="width: 100%; border-collapse: collapse; font-family: Verdana, sans-serif; font-size: 11px; margin-bottom: 6px;">
+                            <tr>
+                                <th style="border: 1px solid #ccc; background: #f8fafc; padding: 4px; text-align: left;">Fondo 1</th>
+                                <th style="border: 1px solid #ccc; background: #f8fafc; padding: 4px; text-align: left;">Fondo 2</th>
+                                <th style="border: 1px solid #ccc; background: #f8fafc; padding: 4px; text-align: left;">Fondo 3</th>
+                                <th style="border: 1px solid #ccc; background: #f8fafc; padding: 4px; text-align: left;">Blend-4</th>
+                                <th style="border: 1px solid #ccc; background: #f8fafc; padding: 4px; text-align: left;">Blend-6</th>
+                            </tr>
+                            <tr>
+                                <td style="border: 1px solid #ccc; padding: 4px;">Nivel: ${p.f1 || 'N/A'}<br>Acción: <strong>${p.a1}</strong></td>
+                                <td style="border: 1px solid #ccc; padding: 4px;">Nivel: ${p.f2 || 'N/A'}<br>Acción: <strong>${p.a2}</strong></td>
+                                <td style="border: 1px solid #ccc; padding: 4px;">Nivel: ${p.f3 || 'N/A'}<br>Acción: <strong>${p.a3}</strong></td>
+                                <td style="border: 1px solid #ccc; padding: 4px;">Nivel: ${p.b4 || 'N/A'}<br>Acción: <strong>${p.ab4}</strong></td>
+                                <td style="border: 1px solid #ccc; padding: 4px;">Nivel: ${p.b6 || 'N/A'}<br>Acción: <strong>${p.ab6}</strong></td>
+                            </tr>
+                        </table>`;
+                } else {
+                    if (p.estado !== 'Detenido') {
+                        let partes = [];
+                        if (p.prod) partes.push(`producción de <strong>${p.prod}</strong>`);
+                        if (p.lotes) partes.push(`bajo el lote <strong>${p.lotes}</strong>`);
+                        if (p.empaque) partes.push(`tolva de empaque en <strong>${p.empaque}</strong>`);
+                        if (p.flujo) partes.push(`a flujo de <strong>${p.flujo}</strong>`);
+                        if (p.presion) partes.push(`presión intercambiador: <strong>${p.presion}</strong>`);
+                        if (p.vacio) partes.push(`vacío en <strong>${p.vacio}</strong>`);
+                        if (p.temp) partes.push(`temp camisas en <strong>${p.temp}</strong>`);
+                        
+                        let chillers = [];
+                        if (p.chillere) chillers.push(`<strong>${p.chillere}</strong> (Ent)`);
+                        if (p.chillerf) chillers.push(`<strong>${p.chillerf}</strong> (Sal)`);
+                        if (chillers.length > 0) partes.push(`agua de chiller en ${formatListWithY(chillers)}`);
+                        
+                        if (p.checks && p.checks.length > 0) {
+                            if (p.proceso === 'S10000') partes.push(`trabajando desde <strong>${formatListWithY(p.checks)}</strong>`);
+                            if (p.proceso === 'S6000') partes.push(`alimentando de <strong>${formatListWithY(p.checks)}</strong>`);
+                        }
+
+                        let textoParametros = formatListWithY(partes);
+                        let leyenda = `Línea <strong>${p.proceso}</strong> se entrega <strong>${p.estado.toLowerCase()}</strong>${textoParametros ? ' con ' + textoParametros : ''}.`;
+                        htmlProduccion += `<div style="font-family: Verdana, sans-serif; font-size: 11px; color: #1e293b; text-align: left; margin-bottom: 6px;">${leyenda}</div>`;
+                    }
+                }
+
+                if(p.obs) {
+                    htmlProduccion += `<div style="font-family: Verdana, sans-serif; font-size: 11px; color: #475569; background-color: #f1f5f9; padding: 6px; border-left: 3px solid #94a3b8; margin-top: 4px;"><strong>Observaciones:</strong> ${p.obs}</div>`;
+                }
+
+                htmlProduccion += `</div></div>`;
+            });
+
+            let totalDowntime = 0;
+            let htmlDowntime = "";
+            if(d.downtime.length > 0) {
+                htmlDowntime = `<table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 10px;">
+                    <tr style="background-color: #f8fafc; text-align: left;">
+                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Equipo</th>
+                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Min</th>
+                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Causa</th>
+                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Acción</th>
+                    </tr>`;
+                d.downtime.forEach(dt => {
+                    if(dt.minutos) totalDowntime += parseInt(dt.minutos);
+                    htmlDowntime += `<tr>
+                        <td style="padding: 4px; border: 1px solid #cbd5e1; font-weight: bold;">${dt.equipo}</td>
+                        <td style="padding: 4px; border: 1px solid #cbd5e1; color: #dc2626;">${dt.minutos}</td>
+                        <td style="padding: 4px; border: 1px solid #cbd5e1;">${dt.causa}</td>
+                        <td style="padding: 4px; border: 1px solid #cbd5e1;">${dt.accion}</td>
+                    </tr>`;
+                });
+                htmlDowntime += `</table>`;
+                htmlDowntime = `<div style="color: #b91c1c; font-weight: bold; font-size: 12px; margin-bottom: 8px;">Total tiempo de paro: ${totalDowntime} minutos.</div>` + htmlDowntime;
+            } else {
+                htmlDowntime = `<p style="font-size: 12px; color: #475569;">Operación continua, sin fallas registradas.</p>`;
+            }
+
+            let htmlTareas = "";
+            if(d.tareas.length > 0) {
+                htmlTareas = `<table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 10px;">
+                    <tr style="background-color: #f8fafc; text-align: left;">
+                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Área</th>
+                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Prioridad</th>
+                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Descripción</th>
+                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Acciones</th>
+                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Resp. / Estado</th>
+                    </tr>`;
+                d.tareas.forEach(t => {
+                    let pColor = t.prio === 'Alta' ? '#dc2626' : (t.prio === 'Media' ? '#d97706' : '#059669');
+                    let sStyle = t.estado === 'Finalizada' ? 'color: #059669; font-weight: bold; background-color: #ecfdf5;' : '';
+                    
+                    let accStr = [];
+                    if (t.inmediata) accStr.push(`<strong>Inmediata:</strong> ${t.inmediata}`);
+                    if (t.correctiva) accStr.push(`<strong>Correctiva:</strong> ${t.correctiva}`);
+                    let accionesFormatted = accStr.length > 0 ? accStr.join('<br>') : "[Sin acciones registradas]";
+
+                    htmlTareas += `<tr style="${t.estado === 'Finalizada' ? 'background-color: #f8fafc;' : ''}">
+                        <td style="padding: 4px; border: 1px solid #cbd5e1;">${t.proceso}</td>
+                        <td style="padding: 4px; border: 1px solid #cbd5e1; font-weight: bold; color: ${pColor};">${t.prio}</td>
+                        <td style="padding: 4px; border: 1px solid #cbd5e1;">${t.desc}</td>
+                        <td style="padding: 4px; border: 1px solid #cbd5e1; font-size: 11px;">${accionesFormatted}</td>
+                        <td style="padding: 4px; border: 1px solid #cbd5e1; ${sStyle}">${t.resp} (${t.estado})</td>
+                    </tr>`;
+                });
+                htmlTareas += `</table>`;
+            } else {
+                htmlTareas = `<p style="font-size: 12px; color: #475569;">Sin tareas registradas.</p>`;
+            }
+
+            let htmlNovedades = "";
+            if(d.novedades.length > 0) {
+                htmlNovedades = `<ul style="margin: 0; padding-left: 20px; font-size: 12px;">`;
+                d.novedades.forEach(n => {
+                    htmlNovedades += `<li style="margin-bottom: 4px;"><strong>[${n.hora}] ${n.tipo}:</strong> ${n.desc}</li>`;
+                });
+                htmlNovedades += `</ul>`;
+            } else {
+                htmlNovedades = `<p style="font-size: 12px; color: #475569;">Sin novedades externas.</p>`;
+            }
+
+            const bodyHTML = `<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="font-family: 'Segoe UI', Arial, sans-serif; color: #1e293b; background-color: #ffffff; font-size: 13px; margin:0; padding:20px;">
+    <div style="max-width: 800px; margin:0 auto; border: 1px solid #94a3b8; padding: 15px; background: white;">
+        <div style="border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 15px;">
+            <h2 style="margin: 0; font-size: 16px; color: #0f172a;">REPORTE DE ENTREGA DE TURNO</h2>
+            <div style="margin-top: 5px; font-size: 12px; color: #475569;">
+                Fecha: <strong>${d.fecha}</strong> | Turno: <strong>${d.turno}</strong><br>
+                Entrega: <strong>${d.entrega}</strong> | Recibe: <strong>${d.recibe}</strong>
+            </div>
+        </div>
+        
+        <h3 style="font-size: 13px; background: #e2e8f0; padding: 4px; border: 1px solid #cbd5e1; margin-bottom: 8px;">1. PARÁMETROS DE PRODUCCIÓN</h3>
+        ${htmlProduccion}
+
+        <h3 style="font-size: 13px; background: #e2e8f0; padding: 4px; border: 1px solid #cbd5e1; margin-top: 20px; margin-bottom: 8px;">2. TIEMPOS MUERTOS</h3>
+        ${htmlDowntime}
+
+        <h3 style="font-size: 13px; background: #e2e8f0; padding: 4px; border: 1px solid #cbd5e1; margin-top: 20px; margin-bottom: 8px;">3. GESTIÓN OPERATIVA (TAREAS)</h3>
+        ${htmlTareas}
+
+        <h3 style="font-size: 13px; background: #e2e8f0; padding: 4px; border: 1px solid #cbd5e1; margin-top: 20px; margin-bottom: 8px;">4. NOVEDADES</h3>
+        ${htmlNovedades}
+    </div>
+</body>
+</html>`;
+
+            // Mostrar modal con el contenido y un mensaje de carga
+            const modal = document.getElementById('pdfModal');
+            const contentDiv = document.getElementById('pdfContent');
+            contentDiv.innerHTML = `<div id="pdfLoading">Generando PDF, espere...</div>`;
+            modal.classList.add('active');
+
+            // Crear un iframe oculto para renderizar el HTML y capturarlo
+            const iframe = document.createElement('iframe');
+            iframe.style.position = 'absolute';
+            iframe.style.left = '-9999px';
+            iframe.style.top = '0';
+            iframe.style.width = '800px';
+            iframe.style.height = '1200px';
+            iframe.style.border = 'none';
+            document.body.appendChild(iframe);
+
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+            iframeDoc.open();
+            iframeDoc.write(bodyHTML);
+            iframeDoc.close();
+
+            // Esperar a que cargue completamente
+            setTimeout(() => {
+                // Capturar el contenido del iframe
+                html2canvas(iframeDoc.body, {
+                    scale: 2,
+                    useCORS: true,
+                    allowTaint: true,
+                    logging: false,
+                    width: 800,
+                    height: iframeDoc.body.scrollHeight
+                }).then(canvas => {
+                    // Crear PDF
+                    const { jsPDF } = window.jspdf;
+                    const pdf = new jsPDF('p', 'mm', 'a4');
+                    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                    const pdfWidth = pdf.internal.pageSize.getWidth();
+                    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+                    pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+                    pdf.save(`Reporte_Turno_${d.fecha}.pdf`);
+
+                    // Limpiar
+                    document.body.removeChild(iframe);
+                    modal.classList.remove('active');
+                }).catch(err => {
+                    console.error('Error al generar PDF:', err);
+                    alert('Hubo un problema al generar el PDF. Intente nuevamente.');
+                    document.body.removeChild(iframe);
+                    modal.classList.remove('active');
+                });
+            }, 500);
+        }
+
+        // ========== FUNCIÓN ORIGINAL GENERAR CORREO (SIN MODIFICAR) ==========
+        function generateHandover() {
+            const d = getFormData();
+            if (!d.entrega || !d.recibe) { alert("Por favor, indique quién entrega y quién recibe."); return; }
+
+            // 1. HTML Producción
+            let htmlProduccion = "";
+            d.produccion.forEach(p => {
+                let statusColor = p.estado === 'Operando' ? '#059669' : (p.estado === 'Standby' ? '#d97706' : '#dc2626');
+                let headerEmpaque = p.empaque ? ` &nbsp;|&nbsp; <span style="color: #475569; font-size: 11px; font-weight: normal;">Tolva Empaque: <strong style="color: #1e293b;">${p.empaque}</strong></span>` : '';
+                
+                htmlProduccion += `<div style="margin-bottom: 12px; border: 1px solid #ccc; background-color: #fcfcfc;">
+                    <div style="background-color: #e2e8f0; padding: 4px 8px; font-weight: bold; font-size: 13px; border-bottom: 1px solid #ccc;">
+                        ${p.proceso} &nbsp;|&nbsp; <span style="color: ${statusColor};">${p.estado}</span>${headerEmpaque}
+                    </div>
+                    <div style="padding: 8px;">`;
+
+                if(p.proceso === 'Saponificación') {
+                    htmlProduccion += `
+                        <table style="width: 100%; border-collapse: collapse; font-family: Verdana, sans-serif; font-size: 11px; margin-bottom: 6px;">
+                            <tr>
+                                <th style="border: 1px solid #ccc; background: #f8fafc; padding: 4px; text-align: left;">Fondo 1</th>
+                                <th style="border: 1px solid #ccc; background: #f8fafc; padding: 4px; text-align: left;">Fondo 2</th>
+                                <th style="border: 1px solid #ccc; background: #f8fafc; padding: 4px; text-align: left;">Fondo 3</th>
+                                <th style="border: 1px solid #ccc; background: #f8fafc; padding: 4px; text-align: left;">Blend-4</th>
+                                <th style="border: 1px solid #ccc; background: #f8fafc; padding: 4px; text-align: left;">Blend-6</th>
+                            </tr>
+                            <tr>
+                                <td style="border: 1px solid #ccc; padding: 4px;">Nivel: ${p.f1 || 'N/A'}<br>Acción: <strong>${p.a1}</strong></td>
+                                <td style="border: 1px solid #ccc; padding: 4px;">Nivel: ${p.f2 || 'N/A'}<br>Acción: <strong>${p.a2}</strong></td>
+                                <td style="border: 1px solid #ccc; padding: 4px;">Nivel: ${p.f3 || 'N/A'}<br>Acción: <strong>${p.a3}</strong></td>
+                                <td style="border: 1px solid #ccc; padding: 4px;">Nivel: ${p.b4 || 'N/A'}<br>Acción: <strong>${p.ab4}</strong></td>
+                                <td style="border: 1px solid #ccc; padding: 4px;">Nivel: ${p.b6 || 'N/A'}<br>Acción: <strong>${p.ab6}</strong></td>
+                            </tr>
+                        </table>`;
+                } else {
+                    if (p.estado !== 'Detenido') {
+                        let partes = [];
+                        if (p.prod) partes.push(`producción de <strong>${p.prod}</strong>`);
+                        if (p.lotes) partes.push(`bajo el lote <strong>${p.lotes}</strong>`);
+                        if (p.empaque) partes.push(`tolva de empaque en <strong>${p.empaque}</strong>`);
+                        if (p.flujo) partes.push(`a flujo de <strong>${p.flujo}</strong>`);
+                        if (p.presion) partes.push(`presión intercambiador: <strong>${p.presion}</strong>`);
+                        if (p.vacio) partes.push(`vacío en <strong>${p.vacio}</strong>`);
+                        if (p.temp) partes.push(`temp camisas en <strong>${p.temp}</strong>`);
+                        
+                        let chillers = [];
+                        if (p.chillere) chillers.push(`<strong>${p.chillere}</strong> (Ent)`);
+                        if (p.chillerf) chillers.push(`<strong>${p.chillerf}</strong> (Sal)`);
+                        if (chillers.length > 0) partes.push(`agua de chiller en ${formatListWithY(chillers)}`);
+                        
+                        if (p.checks && p.checks.length > 0) {
+                            if (p.proceso === 'S10000') partes.push(`trabajando desde <strong>${formatListWithY(p.checks)}</strong>`);
+                            if (p.proceso === 'S6000') partes.push(`alimentando de <strong>${formatListWithY(p.checks)}</strong>`);
+                        }
+
+                        let textoParametros = formatListWithY(partes);
+                        let leyenda = `Línea <strong>${p.proceso}</strong> se entrega <strong>${p.estado.toLowerCase()}</strong>${textoParametros ? ' con ' + textoParametros : ''}.`;
+                        htmlProduccion += `<div style="font-family: Verdana, sans-serif; font-size: 11px; color: #1e293b; text-align: left; margin-bottom: 6px;">${leyenda}</div>`;
+                    }
+                }
+
+                if(p.obs) {
+                    htmlProduccion += `<div style="font-family: Verdana, sans-serif; font-size: 11px; color: #475569; background-color: #f1f5f9; padding: 6px; border-left: 3px solid #94a3b8; margin-top: 4px;"><strong>Observaciones:</strong> ${p.obs}</div>`;
+                }
+
+                htmlProduccion += `</div></div>`;
+            });
+
+            // 2. HTML Tiempos Muertos
+            let totalDowntime = 0;
+            let htmlDowntime = "";
+            if(d.downtime.length > 0) {
+                htmlDowntime = `<table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 10px;">
+                    <tr style="background-color: #f8fafc; text-align: left;">
+                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Equipo</th>
+                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Min</th>
+                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Causa</th>
+                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Acción</th>
+                    </tr>`;
+                d.downtime.forEach(dt => {
+                    if(dt.minutos) totalDowntime += parseInt(dt.minutos);
+                    htmlDowntime += `<tr>
+                        <td style="padding: 4px; border: 1px solid #cbd5e1; font-weight: bold;">${dt.equipo}</td>
+                        <td style="padding: 4px; border: 1px solid #cbd5e1; color: #dc2626;">${dt.minutos}</td>
+                        <td style="padding: 4px; border: 1px solid #cbd5e1;">${dt.causa}</td>
+                        <td style="padding: 4px; border: 1px solid #cbd5e1;">${dt.accion}</td>
+                    </tr>`;
+                });
+                htmlDowntime += `</table>`;
+                htmlDowntime = `<div style="color: #b91c1c; font-weight: bold; font-size: 12px; margin-bottom: 8px;">Total tiempo de paro: ${totalDowntime} minutos.</div>` + htmlDowntime;
+            } else {
+                htmlDowntime = `<p style="font-size: 12px; color: #475569;">Operación continua, sin fallas registradas.</p>`;
+            }
+
+            // 3. HTML Tareas (incluye finalizadas en verde y los campos de acción corregidos)
+            let htmlTareas = "";
+            if(d.tareas.length > 0) {
+                htmlTareas = `<table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 10px;">
+                    <tr style="background-color: #f8fafc; text-align: left;">
+                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Área</th>
+                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Prioridad</th>
+                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Descripción</th>
+                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Acciones</th>
+                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Resp. / Estado</th>
+                    </tr>`;
+                d.tareas.forEach(t => {
+                    let pColor = t.prio === 'Alta' ? '#dc2626' : (t.prio === 'Media' ? '#d97706' : '#059669');
+                    let sStyle = t.estado === 'Finalizada' ? 'color: #059669; font-weight: bold; background-color: #ecfdf5;' : '';
+                    
+                    let accStr = [];
+                    if (t.inmediata) accStr.push(`<strong>Inmediata:</strong> ${t.inmediata}`);
+                    if (t.correctiva) accStr.push(`<strong>Correctiva:</strong> ${t.correctiva}`);
+                    let accionesFormatted = accStr.length > 0 ? accStr.join('<br>') : "[Sin acciones registradas]";
+
+                    htmlTareas += `<tr style="${t.estado === 'Finalizada' ? 'background-color: #f8fafc;' : ''}">
+                        <td style="padding: 4px; border: 1px solid #cbd5e1;">${t.proceso}</td>
+                        <td style="padding: 4px; border: 1px solid #cbd5e1; font-weight: bold; color: ${pColor};">${t.prio}</td>
+                        <td style="padding: 4px; border: 1px solid #cbd5e1;">${t.desc}</td>
+                        <td style="padding: 4px; border: 1px solid #cbd5e1; font-size: 11px;">${accionesFormatted}</td>
+                        <td style="padding: 4px; border: 1px solid #cbd5e1; ${sStyle}">${t.resp} (${t.estado})</td>
+                    </tr>`;
+                });
+                htmlTareas += `</table>`;
+            } else {
+                htmlTareas = `<p style="font-size: 12px; color: #475569;">Sin tareas registradas.</p>`;
+            }
+
+            // 4. HTML Novedades
+            let htmlNovedades = "";
+            if(d.novedades.length > 0) {
+                htmlNovedades = `<ul style="margin: 0; padding-left: 20px; font-size: 12px;">`;
+                d.novedades.forEach(n => {
+                    htmlNovedades += `<li style="margin-bottom: 4px;"><strong>[${n.hora}] ${n.tipo}:</strong> ${n.desc}</li>`;
+                });
+                htmlNovedades += `</ul>`;
+            } else {
+                htmlNovedades = `<p style="font-size: 12px; color: #475569;">Sin novedades externas.</p>`;
+            }
+
+            const subject = `Entrega de Turno - ${d.turno} - ${d.fecha.split('-').reverse().join('/')}`;
+            const bodyHTML = `<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="font-family: 'Segoe UI', Arial, sans-serif; color: #1e293b; background-color: #ffffff; font-size: 13px;">
+    <div style="max-width: 800px; border: 1px solid #94a3b8; padding: 15px;">
+        <div style="border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 15px;">
+            <h2 style="margin: 0; font-size: 16px; color: #0f172a;">REPORTE DE ENTREGA DE TURNO</h2>
+            <div style="margin-top: 5px; font-size: 12px; color: #475569;">
+                Fecha: <strong>${d.fecha}</strong> | Turno: <strong>${d.turno}</strong><br>
+                Entrega: <strong>${d.entrega}</strong> | Recibe: <strong>${d.recibe}</strong>
+            </div>
+        </div>
+        
+        <h3 style="font-size: 13px; background: #e2e8f0; padding: 4px; border: 1px solid #cbd5e1; margin-bottom: 8px;">1. PARÁMETROS DE PRODUCCIÓN</h3>
+        ${htmlProduccion}
+
+        <h3 style="font-size: 13px; background: #e2e8f0; padding: 4px; border: 1px solid #cbd5e1; margin-top: 20px; margin-bottom: 8px;">2. TIEMPOS MUERTOS</h3>
+        ${htmlDowntime}
+
+        <h3 style="font-size: 13px; background: #e2e8f0; padding: 4px; border: 1px solid #cbd5e1; margin-top: 20px; margin-bottom: 8px;">3. GESTIÓN OPERATIVA (TAREAS)</h3>
+        ${htmlTareas}
+
+        <h3 style="font-size: 13px; background: #e2e8f0; padding: 4px; border: 1px solid #cbd5e1; margin-top: 20px; margin-bottom: 8px;">4. NOVEDADES</h3>
+        ${htmlNovedades}
+    </div>
+</body>
+</html>`;
+
+            localStorage.setItem('shift_last_sent', JSON.stringify(d));
+            localStorage.removeItem('shift_draft'); 
+
+            const boundary = "----=_NextPart_ShiftAssistant_HTML_Mail";
+            const emlContent = [
+                `To: `,
+                `Subject: ${subject}`,
+                `X-Unsent: 1`,
+                `MIME-Version: 1.0`,
+                `Content-Type: multipart/alternative; boundary="${boundary}"`,
+                ``,
+                `--${boundary}`,
+                `Content-Type: text/html; charset="UTF-8"`,
+                `Content-Transfer-Encoding: 8bit`,
+                ``,
+                bodyHTML.trim(),
+                ``,
+                `--${boundary}--`
+            ].join('\r\n');
+
+            const blob = new Blob([emlContent], { type: 'message/rfc822' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${subject}.eml`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
