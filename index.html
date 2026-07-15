@@ -90,46 +90,25 @@
             </div>
         </div>
 
-        <!-- 1. PRODUCCIÓN -->
+        <!-- 1. PRODUCCIÓN & TIEMPOS MUERTOS -->
         <div class="card">
-            <div class="card-header">1. PARÁMETROS DE PRODUCCIÓN Y ESTADO DE LÍNEAS</div>
-            <div id="productionContainer" class="grid grid-cols-1 gap-3"></div>
+            <div class="card-header">1. PARÁMETROS DE PRODUCCIÓN, LÍNEAS Y TIEMPOS MUERTOS</div>
+            <div id="productionContainer" class="grid grid-cols-1 gap-4"></div>
         </div>
 
-        <!-- 2. TIEMPOS MUERTOS -->
+        <!-- 2. TAREAS Y GESTIÓN -->
         <div class="card">
             <div class="flex justify-between items-center bg-slate-200 p-2 mb-3 -mx-4 -mt-4 border-b border-slate-300">
-                <div class="font-bold text-sm text-slate-800 tracking-wider">2. TIEMPOS MUERTOS Y PUNTOS CRÍTICOS</div>
-                <button type="button" onclick="addDowntime()" class="bg-slate-700 text-white px-2 py-1 text-xs hover:bg-slate-800 transition">+ Registrar Falla</button>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-xs text-left border-collapse">
-                    <thead>
-                        <tr>
-                            <th class="w-1/6">Equipo</th><th class="w-24">Inicio</th>
-                            <th class="w-24">Fin</th><th class="w-16">Min</th>
-                            <th class="w-1/4">Causa</th><th>Acción realizada</th>
-                            <th class="w-8"></th>
-                        </tr>
-                    </thead>
-                    <tbody id="downtimeBody"></tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- 3. TAREAS Y GESTIÓN -->
-        <div class="card">
-            <div class="flex justify-between items-center bg-slate-200 p-2 mb-3 -mx-4 -mt-4 border-b border-slate-300">
-                <div class="font-bold text-sm text-slate-800 tracking-wider">3. GESTIÓN OPERATIVA (TAREAS)</div>
+                <div class="font-bold text-sm text-slate-800 tracking-wider">2. GESTIÓN OPERATIVA (TAREAS)</div>
                 <button type="button" onclick="addTask()" class="bg-slate-700 text-white px-2 py-1 text-xs hover:bg-slate-800 transition">+ Nueva Tarea</button>
             </div>
             <div id="tasksContainer" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
         </div>
 
-        <!-- 4. NOVEDADES -->
+        <!-- 3. NOVEDADES -->
         <div class="card">
             <div class="flex justify-between items-center bg-slate-200 p-2 mb-3 -mx-4 -mt-4 border-b border-slate-300">
-                <div class="font-bold text-sm text-slate-800 tracking-wider">4. NOVEDADES REPORTADAS</div>
+                <div class="font-bold text-sm text-slate-800 tracking-wider">3. NOVEDADES REPORTADAS</div>
                 <button type="button" onclick="addUpdate()" class="bg-slate-700 text-white px-2 py-1 text-xs hover:bg-slate-800 transition">+ Novedad</button>
             </div>
             <div id="updatesContainer" class="space-y-2"></div>
@@ -141,7 +120,7 @@
                 GENERAR PDF
             </button>
             <button type="button" onclick="generateHandover()" class="bg-blue-800 text-white px-6 py-3 text-sm font-bold tracking-wider hover:bg-blue-900 transition shadow">
-                GENERAR REPORTE NATIVO EN OUTLOOK
+                ENVIAR VIA OUTLOOK
             </button>
         </div>
     </form>
@@ -158,7 +137,7 @@
         const ENGINEERS = ['Jenry Fonseca', 'Mario Orellano', 'Luis Valdes', 'Otro'];
         const RESPONSABLES = ['Equipo Interno', 'Patio Tanque', 'Mecánico', 'Eléctrico', 'Automatizador', 'Locativo', 'Metrólogo', 'Calidad', 'Acabados', 'Logística', 'Múltidisciplinar'];
         const PRIORITIES = ['Alta', 'Media', 'Baja'];
-        const STATUSES = ['Pendiente', 'En proceso', 'En espera (On Hold)', 'Finalizada'];
+        const STATUSES = ['Pendiente', 'En proceso', 'On-hold', 'Completado', 'Cancelado']; // <-- Cambio de estado
 
         document.addEventListener("DOMContentLoaded", () => {
             initDefaultValues();
@@ -204,18 +183,49 @@
             document.getElementById('turno').value = (hour >= 6 && hour < 18) ? 'AM' : 'PM';
         }
 
+        // Tiempos muertos base HTML integrados por línea
+        function getDowntimeHtml(procId) {
+            return `
+            <div class="mt-3 border-t border-slate-300 pt-2 bg-slate-50 p-2">
+                <div class="flex justify-between items-center mb-1">
+                    <label class="font-bold text-xs text-slate-800 mb-0">Tiempos Muertos / Fallas Críticas</label>
+                    <button type="button" onclick="addDowntime('${procId}')" class="bg-slate-700 text-white px-2 py-0.5 text-[10px] hover:bg-slate-800 transition shadow">+ Falla</button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-[10px] text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-200">
+                                <th class="w-1/6 border border-slate-300 p-1">Equipo</th>
+                                <th class="w-16 border border-slate-300 p-1">Inicio</th>
+                                <th class="w-16 border border-slate-300 p-1">Fin</th>
+                                <th class="w-12 border border-slate-300 p-1">Min</th>
+                                <th class="w-1/4 border border-slate-300 p-1">Causa</th>
+                                <th class="border border-slate-300 p-1">Acción realizada</th>
+                                <th class="w-6 border border-slate-300 p-1"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="dt-body-${procId}"></tbody>
+                    </table>
+                </div>
+            </div>`;
+        }
+
         function renderProductionSections() {
             const container = document.getElementById('productionContainer');
             container.innerHTML = '';
             PROCESSES.forEach(proc => {
+                const procId = proc.replace(/\s+/g, '');
+                
                 if(proc === 'Saponificación') {
                     container.innerHTML += `
-                    <div class="border border-slate-300 p-2 bg-slate-50" data-process="${proc}">
-                        <div class="flex justify-between items-center mb-2 border-b border-slate-300 pb-1">
-                            <h3 class="font-bold text-sm text-slate-800">${proc} (Preparación)</h3>
-                            <div class="flex gap-2 items-center">
-                                <label class="mb-0">Estado:</label>
-                                <select class="prod-estado w-24"><option>Operando</option><option>Detenido</option></select>
+                    <div class="border border-slate-300 p-2 bg-white" data-process="${proc}">
+                        <div class="flex justify-between items-start mb-2 border-b border-slate-300 pb-2 bg-slate-50 p-1">
+                            <div>
+                                <h3 class="font-bold text-sm text-slate-800 mb-1">${proc} (Preparación)</h3>
+                                <div class="flex gap-2 items-center">
+                                    <label class="mb-0 text-xs text-slate-600">Estado:</label>
+                                    <select class="prod-estado w-32"><option>Operando</option><option>Detenido</option><option>No programada</option></select>
+                                </div>
                             </div>
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-5 gap-2">
@@ -234,6 +244,7 @@
                             <label>Observaciones (${proc}):</label>
                             <textarea class="prod-obs" maxlength="500" rows="2" placeholder="Novedades específicas del área..."></textarea>
                         </div>
+                        ${getDowntimeHtml(procId)}
                     </div>`;
                 } else {
                     let checksHTML = "";
@@ -255,19 +266,21 @@
                     }
 
                     container.innerHTML += `
-                    <div class="border border-slate-300 p-2" data-process="${proc}">
-                        <div class="flex justify-between items-center mb-2 border-b border-slate-300 pb-1">
-                            <h3 class="font-bold text-sm text-slate-800">${proc}</h3>
-                            <div class="flex gap-3 items-center">
+                    <div class="border border-slate-300 p-2 bg-white" data-process="${proc}">
+                        <div class="flex justify-between items-start mb-2 border-b border-slate-300 pb-2 bg-slate-50 p-1">
+                            <div>
+                                <h3 class="font-bold text-sm text-slate-800 mb-1">${proc}</h3>
+                                <div class="flex gap-2 items-center">
+                                    <label class="mb-0 text-xs text-slate-600">Estado:</label>
+                                    <select class="prod-estado w-32"><option>Operando</option><option>Detenido</option><option>Standby</option><option>No programada</option></select>
+                                </div>
+                            </div>
+                            <div>
                                 ${['S6000', 'S10000', 'S15000'].includes(proc) ? `
-                                <div class="flex gap-1 items-center">
+                                <div class="flex gap-1 items-center mt-1">
                                     <label class="mb-0 text-xs">Tolva Empaque:</label>
                                     <select class="prod-empaque w-44 text-xs"><option value="">Seleccione...</option><option value="SACOS_25">SACOS_25</option><option value="BB_750">BB_750</option><option value="BB_900">BB_900</option></select>
                                 </div>` : ''}
-                                <div class="flex gap-2 items-center">
-                                    <label class="mb-0">Estado:</label>
-                                    <select class="prod-estado w-24"><option>Operando</option><option>Detenido</option><option>Standby</option></select>
-                                </div>
                             </div>
                         </div>
                         ${checksHTML}
@@ -285,29 +298,29 @@
                             <label>Observaciones o Calidad (max 500 carac.):</label>
                             <textarea class="prod-obs" maxlength="500" rows="2" placeholder="Detalles operativos, comportamiento del flujo, etc..."></textarea>
                         </div>
+                        ${getDowntimeHtml(procId)}
                     </div>`;
                 }
             });
         }
 
-        function addDowntime(data = {}) {
-            const id = Date.now();
+        // Tiempos muertos insertados por línea
+        function addDowntime(procId, data = {}) {
             const tr = document.createElement('tr');
-            tr.id = `dt-${id}`;
             tr.innerHTML = `
-                <td><input type="text" class="dt-equipo" value="${data.equipo || ''}"></td>
-                <td><input type="time" class="dt-inicio" value="${data.inicio || ''}" onchange="calcDuration(${id})"></td>
-                <td><input type="time" class="dt-fin" value="${data.fin || ''}" onchange="calcDuration(${id})"></td>
-                <td><input type="number" class="dt-min bg-slate-100 text-center font-bold" value="${data.minutos || ''}" readonly tabindex="-1"></td>
-                <td><input type="text" class="dt-causa" value="${data.causa || ''}"></td>
-                <td><input type="text" class="dt-accion" value="${data.accion || ''}"></td>
-                <td class="text-center"><button type="button" onclick="this.closest('tr').remove(); saveDraft();" class="text-red-600 font-bold">X</button></td>
+                <td class="p-0.5 border border-slate-300"><input type="text" class="dt-equipo w-full p-1" value="${data.equipo || ''}"></td>
+                <td class="p-0.5 border border-slate-300"><input type="time" class="dt-inicio w-full p-1" value="${data.inicio || ''}" onchange="calcDuration(this)"></td>
+                <td class="p-0.5 border border-slate-300"><input type="time" class="dt-fin w-full p-1" value="${data.fin || ''}" onchange="calcDuration(this)"></td>
+                <td class="p-0.5 border border-slate-300"><input type="number" class="dt-min w-full p-1 bg-slate-100 text-center font-bold" value="${data.minutos || ''}" readonly tabindex="-1"></td>
+                <td class="p-0.5 border border-slate-300"><input type="text" class="dt-causa w-full p-1" value="${data.causa || ''}"></td>
+                <td class="p-0.5 border border-slate-300"><input type="text" class="dt-accion w-full p-1" value="${data.accion || ''}"></td>
+                <td class="p-0.5 border border-slate-300 text-center"><button type="button" onclick="this.closest('tr').remove(); saveDraft();" class="text-red-600 font-bold px-1">X</button></td>
             `;
-            document.getElementById('downtimeBody').appendChild(tr);
+            document.getElementById(`dt-body-${procId}`).appendChild(tr);
         }
 
-        function calcDuration(id) {
-            const row = document.getElementById(`dt-${id}`);
+        function calcDuration(el) {
+            const row = el.closest('tr');
             const start = row.querySelector('.dt-inicio').value;
             const end = row.querySelector('.dt-fin').value;
             if (start && end) {
@@ -320,6 +333,18 @@
             }
         }
 
+        // Semáforo para Estado de la Tarea
+        function updateTaskColor(selectEl) {
+            const val = selectEl.value;
+            selectEl.className = 'tk-estado border p-1 w-full text-xs font-bold transition rounded outline-none ';
+            if(val === 'Pendiente') selectEl.classList.add('bg-slate-200', 'text-slate-800');
+            else if(val === 'Completado') selectEl.classList.add('bg-green-600', 'text-white', 'border-green-700');
+            else if(val === 'Cancelado') selectEl.classList.add('bg-red-600', 'text-white', 'border-red-700');
+            else if(val === 'En proceso') selectEl.classList.add('bg-blue-500', 'text-white', 'border-blue-600');
+            else if(val === 'On-hold') selectEl.classList.add('bg-orange-400', 'text-white', 'border-orange-500');
+            saveDraft();
+        }
+
         function addTask(data = {}) {
             const div = document.createElement('div');
             div.className = "border border-slate-300 p-2 bg-white relative";
@@ -330,9 +355,9 @@
                     <div><label>Prioridad</label><select class="tk-prio">${PRIORITIES.map(p => `<option ${data.prio === p ? 'selected' : ''}>${p}</option>`).join('')}</select></div>
                 </div>
                 <div class="mb-2"><label>Descripción</label><input type="text" class="tk-desc" value="${data.desc || ''}"></div>
-                <div class="grid grid-cols-2 gap-2 mb-2">
-                    <div><label>Responsable</label><select class="tk-resp">${RESPONSABLES.map(r => `<option ${data.resp === r ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
-                    <div><label>Estado</label><select class="tk-estado">${STATUSES.map(s => `<option ${data.estado === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
+                <div class="grid grid-cols-1 md:grid-cols-5 gap-2 mb-2">
+                    <div class="md:col-span-3"><label>Responsable</label><select class="tk-resp">${RESPONSABLES.map(r => `<option ${data.resp === r ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
+                    <div class="md:col-span-2"><label>Estado</label><select class="tk-estado" onchange="updateTaskColor(this)">${STATUSES.map(s => `<option ${data.estado === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div><label>Acción Inmediata</label><input type="text" class="tk-inmediata" value="${data.inmediata || ''}" placeholder="Acción tomada al momento..."></div>
@@ -340,6 +365,8 @@
                 </div>
             `;
             document.getElementById('tasksContainer').appendChild(div);
+            // Aplica color inicial
+            setTimeout(() => updateTaskColor(div.querySelector('.tk-estado')), 0);
         }
 
         function addUpdate(data = {}) {
@@ -359,11 +386,26 @@
             let data = {
                 fecha: document.getElementById('fecha').value, turno: document.getElementById('turno').value,
                 entrega: document.getElementById('entrega').value, recibe: document.getElementById('recibe').value,
-                produccion: [], downtime: [], tareas: [], novedades: []
+                produccion: [], tareas: [], novedades: []
             };
 
-            document.querySelectorAll('#productionContainer > div').forEach(div => {
+            document.querySelectorAll('#productionContainer > div.bg-white').forEach(div => {
                 let proc = div.dataset.process;
+                let procId = proc.replace(/\s+/g, '');
+                
+                // Extraer tiempos muertos locales
+                let localDowntime = [];
+                div.querySelectorAll(`tbody[id="dt-body-${procId}"] tr`).forEach(tr => {
+                    localDowntime.push({ 
+                        equipo: tr.querySelector('.dt-equipo').value, 
+                        inicio: tr.querySelector('.dt-inicio').value, 
+                        fin: tr.querySelector('.dt-fin').value, 
+                        minutos: tr.querySelector('.dt-min').value, 
+                        causa: tr.querySelector('.dt-causa').value, 
+                        accion: tr.querySelector('.dt-accion').value 
+                    });
+                });
+
                 if(proc === 'Saponificación') {
                     data.produccion.push({
                         proceso: proc, estado: div.querySelector('.prod-estado').value,
@@ -372,7 +414,8 @@
                         f3: div.querySelector('.sap-f3').value, a3: div.querySelector('.sap-a3').value,
                         b4: div.querySelector('.sap-b4').value, ab4: div.querySelector('.sap-ab4').value,
                         b6: div.querySelector('.sap-b6').value, ab6: div.querySelector('.sap-ab6').value,
-                        obs: div.querySelector('.prod-obs').value
+                        obs: div.querySelector('.prod-obs').value,
+                        downtime: localDowntime
                     });
                 } else {
                     let checks = [];
@@ -386,12 +429,12 @@
                         vacio: div.querySelector('.prod-vacio').value, temp: div.querySelector('.prod-temp').value,
                         chillere: div.querySelector('.prod-chillere').value, chillerf: div.querySelector('.prod-chillerf').value, 
                         checks: checks,
-                        obs: div.querySelector('.prod-obs').value
+                        obs: div.querySelector('.prod-obs').value,
+                        downtime: localDowntime
                     });
                 }
             });
 
-            document.querySelectorAll('#downtimeBody tr').forEach(tr => { data.downtime.push({ equipo: tr.querySelector('.dt-equipo').value, inicio: tr.querySelector('.dt-inicio').value, fin: tr.querySelector('.dt-fin').value, minutos: tr.querySelector('.dt-min').value, causa: tr.querySelector('.dt-causa').value, accion: tr.querySelector('.dt-accion').value }); });
             document.querySelectorAll('#tasksContainer > div').forEach(div => { data.tareas.push({ proceso: div.querySelector('.tk-proceso').value, prio: div.querySelector('.tk-prio').value, desc: div.querySelector('.tk-desc').value, resp: div.querySelector('.tk-resp').value, estado: div.querySelector('.tk-estado').value, inmediata: div.querySelector('.tk-inmediata').value, correctiva: div.querySelector('.tk-correctiva').value }); });
             document.querySelectorAll('#updatesContainer > div').forEach(div => { data.novedades.push({ hora: div.querySelector('.up-hora').value, tipo: div.querySelector('.up-tipo').value, desc: div.querySelector('.up-desc').value }); });
             return data;
@@ -407,8 +450,9 @@
                 let data = JSON.parse(last);
                 data.fecha = document.getElementById('fecha').value; 
                 data.entrega = data.recibe; data.recibe = "";
-                data.tareas = data.tareas.filter(t => t.estado !== 'Finalizada');
-                data.downtime = []; data.novedades = [];
+                data.tareas = data.tareas.filter(t => t.estado !== 'Completado' && t.estado !== 'Cancelado');
+                data.produccion.forEach(p => p.downtime = []); // Limpia tiempos muertos viejos
+                data.novedades = [];
                 fillFormFromData(data);
                 const event = new Event('change');
                 document.getElementById('entrega').dispatchEvent(event);
@@ -423,7 +467,7 @@
             if(data.entrega) document.getElementById('entrega').value = data.entrega;
             if(data.recibe) document.getElementById('recibe').value = data.recibe;
 
-            const prods = document.querySelectorAll('#productionContainer > div');
+            const prods = document.querySelectorAll('#productionContainer > div.bg-white');
             data.produccion.forEach((pData, index) => {
                 if(prods[index]) {
                     prods[index].querySelector('.prod-estado').value = pData.estado || 'Operando';
@@ -449,10 +493,17 @@
                         });
                     }
                     prods[index].querySelector('.prod-obs').value = pData.obs || '';
+
+                    // Llenar tiempos muertos de esta línea
+                    const procId = pData.proceso.replace(/\s+/g, '');
+                    const tbody = document.getElementById(`dt-body-${procId}`);
+                    if(tbody) tbody.innerHTML = '';
+                    if(pData.downtime) {
+                        pData.downtime.forEach(dt => addDowntime(procId, dt));
+                    }
                 }
             });
 
-            document.getElementById('downtimeBody').innerHTML = ''; if(data.downtime) data.downtime.forEach(dt => addDowntime(dt));
             document.getElementById('tasksContainer').innerHTML = ''; if(data.tareas) data.tareas.forEach(tk => addTask(tk));
             document.getElementById('updatesContainer').innerHTML = ''; if(data.novedades) data.novedades.forEach(up => addUpdate(up));
             
@@ -460,7 +511,6 @@
             document.getElementById('entrega').dispatchEvent(event);
         }
 
-        // FUNCIÓN AUXILIAR PARA UNIR ELEMENTOS CON COMAS Y LA "y" FINAL CORRECTAMENTE
         function formatListWithY(items) {
             const cleanItems = items.filter(i => i !== null && i !== undefined && i.toString().trim() !== "");
             if (cleanItems.length === 0) return "";
@@ -469,7 +519,7 @@
             return cleanItems.join(', ') + ' y ' + lastItem;
         }
 
-        // ========== NUEVA FUNCIÓN GENERAR PDF (CON MODAL VISIBLE) ==========
+        // ========== GENERAR PDF ==========
         function generatePDF() {
             const d = getFormData();
             if (!d.entrega || !d.recibe) {
@@ -477,9 +527,12 @@
                 return;
             }
 
-            // Construir el HTML del reporte (idéntico al del correo)
             let htmlProduccion = "";
+            let globalTotalDowntime = 0;
+
             d.produccion.forEach(p => {
+                if (p.estado === 'No programada') return;
+
                 let statusColor = p.estado === 'Operando' ? '#059669' : (p.estado === 'Standby' ? '#d97706' : '#dc2626');
                 let headerEmpaque = p.empaque ? ` &nbsp;|&nbsp; <span style="color: #475569; font-size: 11px; font-weight: normal;">Tolva Empaque: <strong style="color: #1e293b;">${p.empaque}</strong></span>` : '';
                 
@@ -508,30 +561,55 @@
                             </tr>
                         </table>`;
                 } else {
-                    if (p.estado !== 'Detenido') {
-                        let partes = [];
-                        if (p.prod) partes.push(`producción de <strong>${p.prod}</strong>`);
-                        if (p.lotes) partes.push(`bajo el lote <strong>${p.lotes}</strong>`);
-                        if (p.empaque) partes.push(`tolva de empaque en <strong>${p.empaque}</strong>`);
-                        if (p.flujo) partes.push(`a flujo de <strong>${p.flujo}</strong>`);
-                        if (p.presion) partes.push(`presión intercambiador: <strong>${p.presion}</strong>`);
-                        if (p.vacio) partes.push(`vacío en <strong>${p.vacio}</strong>`);
-                        if (p.temp) partes.push(`temp camisas en <strong>${p.temp}</strong>`);
-                        
-                        let chillers = [];
-                        if (p.chillere) chillers.push(`<strong>${p.chillere}</strong> (Ent)`);
-                        if (p.chillerf) chillers.push(`<strong>${p.chillerf}</strong> (Sal)`);
-                        if (chillers.length > 0) partes.push(`agua de chiller en ${formatListWithY(chillers)}`);
-                        
-                        if (p.checks && p.checks.length > 0) {
-                            if (p.proceso === 'S10000') partes.push(`trabajando desde <strong>${formatListWithY(p.checks)}</strong>`);
-                            if (p.proceso === 'S6000') partes.push(`alimentando de <strong>${formatListWithY(p.checks)}</strong>`);
-                        }
-
-                        let textoParametros = formatListWithY(partes);
-                        let leyenda = `Línea <strong>${p.proceso}</strong> se entrega <strong>${p.estado.toLowerCase()}</strong>${textoParametros ? ' con ' + textoParametros : ''}.`;
-                        htmlProduccion += `<div style="font-family: Verdana, sans-serif; font-size: 11px; color: #1e293b; text-align: left; margin-bottom: 6px;">${leyenda}</div>`;
+                    // SE ELIMINÓ EL CONDICIONAL "if (p.estado !== 'Detenido')" PARA PERMITIR IMPRESIÓN DE VARIABLES SI ESTÁ DETENIDA
+                    let partes = [];
+                    if (p.prod) partes.push(`producción de <strong>${p.prod}</strong>`);
+                    if (p.lotes) partes.push(`bajo el lote <strong>${p.lotes}</strong>`);
+                    if (p.empaque) partes.push(`tolva de empaque en <strong>${p.empaque}</strong>`);
+                    if (p.flujo) partes.push(`a flujo de <strong>${p.flujo}</strong>`);
+                    if (p.presion) partes.push(`presión intercambiador: <strong>${p.presion}</strong>`);
+                    if (p.vacio) partes.push(`vacío en <strong>${p.vacio}</strong>`);
+                    if (p.temp) partes.push(`temp camisas en <strong>${p.temp}</strong>`);
+                    
+                    let chillers = [];
+                    if (p.chillere) chillers.push(`<strong>${p.chillere}</strong> (Ent)`);
+                    if (p.chillerf) chillers.push(`<strong>${p.chillerf}</strong> (Sal)`);
+                    if (chillers.length > 0) partes.push(`agua de chiller en ${formatListWithY(chillers)}`);
+                    
+                    if (p.checks && p.checks.length > 0) {
+                        if (p.proceso === 'S10000') partes.push(`trabajando desde <strong>${formatListWithY(p.checks)}</strong>`);
+                        if (p.proceso === 'S6000') partes.push(`alimentando de <strong>${formatListWithY(p.checks)}</strong>`);
                     }
+
+                    let textoParametros = formatListWithY(partes);
+                    let leyenda = `Línea <strong>${p.proceso}</strong> se entrega <strong>${p.estado.toLowerCase()}</strong>${textoParametros ? ' con ' + textoParametros : ''}.`;
+                    htmlProduccion += `<div style="font-family: Verdana, sans-serif; font-size: 11px; color: #1e293b; text-align: left; margin-bottom: 6px;">${leyenda}</div>`;
+                }
+
+                // Generar tabla de tiempo muerto por proceso
+                if(p.downtime && p.downtime.length > 0) {
+                    let procDowntime = 0;
+                    htmlProduccion += `<table style="width: 100%; border-collapse: collapse; font-family: Verdana, sans-serif; font-size: 11px; margin-bottom: 6px; margin-top: 8px;">
+                        <tr style="background-color: #f1f5f9; text-align: left;">
+                            <th style="padding: 3px; border: 1px solid #cbd5e1;">Falla en Equipo</th>
+                            <th style="padding: 3px; border: 1px solid #cbd5e1;">Minutos</th>
+                            <th style="padding: 3px; border: 1px solid #cbd5e1;">Causa</th>
+                            <th style="padding: 3px; border: 1px solid #cbd5e1;">Acción Tomada</th>
+                        </tr>`;
+                    p.downtime.forEach(dt => {
+                        if(dt.minutos) {
+                            procDowntime += parseInt(dt.minutos);
+                            globalTotalDowntime += parseInt(dt.minutos);
+                        }
+                        htmlProduccion += `<tr>
+                            <td style="padding: 3px; border: 1px solid #cbd5e1; font-weight: bold;">${dt.equipo}</td>
+                            <td style="padding: 3px; border: 1px solid #cbd5e1; color: #dc2626;">${dt.minutos}</td>
+                            <td style="padding: 3px; border: 1px solid #cbd5e1;">${dt.causa}</td>
+                            <td style="padding: 3px; border: 1px solid #cbd5e1;">${dt.accion}</td>
+                        </tr>`;
+                    });
+                    htmlProduccion += `</table>`;
+                    htmlProduccion += `<div style="color: #b91c1c; font-weight: bold; font-size: 11px; margin-bottom: 4px;">Paro total en ${p.proceso}: ${procDowntime} min.</div>`;
                 }
 
                 if(p.obs) {
@@ -541,29 +619,9 @@
                 htmlProduccion += `</div></div>`;
             });
 
-            let totalDowntime = 0;
-            let htmlDowntime = "";
-            if(d.downtime.length > 0) {
-                htmlDowntime = `<table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 10px;">
-                    <tr style="background-color: #f8fafc; text-align: left;">
-                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Equipo</th>
-                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Min</th>
-                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Causa</th>
-                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Acción</th>
-                    </tr>`;
-                d.downtime.forEach(dt => {
-                    if(dt.minutos) totalDowntime += parseInt(dt.minutos);
-                    htmlDowntime += `<tr>
-                        <td style="padding: 4px; border: 1px solid #cbd5e1; font-weight: bold;">${dt.equipo}</td>
-                        <td style="padding: 4px; border: 1px solid #cbd5e1; color: #dc2626;">${dt.minutos}</td>
-                        <td style="padding: 4px; border: 1px solid #cbd5e1;">${dt.causa}</td>
-                        <td style="padding: 4px; border: 1px solid #cbd5e1;">${dt.accion}</td>
-                    </tr>`;
-                });
-                htmlDowntime += `</table>`;
-                htmlDowntime = `<div style="color: #b91c1c; font-weight: bold; font-size: 12px; margin-bottom: 8px;">Total tiempo de paro: ${totalDowntime} minutos.</div>` + htmlDowntime;
-            } else {
-                htmlDowntime = `<p style="font-size: 12px; color: #475569;">Operación continua, sin fallas registradas.</p>`;
+            // Resumen global opcional
+            if(globalTotalDowntime > 0) {
+                 htmlProduccion += `<div style="margin-top: 5px; text-align: right; color: #b91c1c; font-weight: bold; font-size: 12px; margin-bottom: 8px;">TOTAL PLANTA: ${globalTotalDowntime} min en paro reportado.</div>`;
             }
 
             let htmlTareas = "";
@@ -578,19 +636,23 @@
                     </tr>`;
                 d.tareas.forEach(t => {
                     let pColor = t.prio === 'Alta' ? '#dc2626' : (t.prio === 'Media' ? '#d97706' : '#059669');
-                    let sStyle = t.estado === 'Finalizada' ? 'color: #059669; font-weight: bold; background-color: #ecfdf5;' : '';
+                    let sStyle = '';
+                    if (t.estado === 'Completado') sStyle = 'color: #059669; font-weight: bold; background-color: #ecfdf5;';
+                    else if (t.estado === 'Cancelado') sStyle = 'color: #dc2626; font-weight: bold; background-color: #fef2f2;';
+                    else if (t.estado === 'On-hold') sStyle = 'color: #d97706; font-weight: bold; background-color: #fffbeb;';
+                    else if (t.estado === 'En proceso') sStyle = 'color: #2563eb; font-weight: bold; background-color: #eff6ff;';
                     
                     let accStr = [];
                     if (t.inmediata) accStr.push(`<strong>Inmediata:</strong> ${t.inmediata}`);
                     if (t.correctiva) accStr.push(`<strong>Correctiva:</strong> ${t.correctiva}`);
                     let accionesFormatted = accStr.length > 0 ? accStr.join('<br>') : "[Sin acciones registradas]";
 
-                    htmlTareas += `<tr style="${t.estado === 'Finalizada' ? 'background-color: #f8fafc;' : ''}">
+                    htmlTareas += `<tr style="${t.estado === 'Completado' ? 'background-color: #f8fafc;' : ''}">
                         <td style="padding: 4px; border: 1px solid #cbd5e1;">${t.proceso}</td>
                         <td style="padding: 4px; border: 1px solid #cbd5e1; font-weight: bold; color: ${pColor};">${t.prio}</td>
                         <td style="padding: 4px; border: 1px solid #cbd5e1;">${t.desc}</td>
                         <td style="padding: 4px; border: 1px solid #cbd5e1; font-size: 11px;">${accionesFormatted}</td>
-                        <td style="padding: 4px; border: 1px solid #cbd5e1; ${sStyle}">${t.resp} (${t.estado})</td>
+                        <td style="padding: 4px; border: 1px solid #cbd5e1; ${sStyle}">${t.resp}<br><strong>(${t.estado})</strong></td>
                     </tr>`;
                 });
                 htmlTareas += `</table>`;
@@ -622,28 +684,23 @@
             </div>
         </div>
         
-        <h3 style="font-size: 13px; background: #e2e8f0; padding: 4px; border: 1px solid #cbd5e1; margin-bottom: 8px;">1. PARÁMETROS DE PRODUCCIÓN</h3>
+        <h3 style="font-size: 13px; background: #e2e8f0; padding: 4px; border: 1px solid #cbd5e1; margin-bottom: 8px;">1. PARÁMETROS DE PRODUCCIÓN Y NOVEDADES TÉCNICAS</h3>
         ${htmlProduccion}
 
-        <h3 style="font-size: 13px; background: #e2e8f0; padding: 4px; border: 1px solid #cbd5e1; margin-top: 20px; margin-bottom: 8px;">2. TIEMPOS MUERTOS</h3>
-        ${htmlDowntime}
-
-        <h3 style="font-size: 13px; background: #e2e8f0; padding: 4px; border: 1px solid #cbd5e1; margin-top: 20px; margin-bottom: 8px;">3. GESTIÓN OPERATIVA (TAREAS)</h3>
+        <h3 style="font-size: 13px; background: #e2e8f0; padding: 4px; border: 1px solid #cbd5e1; margin-top: 20px; margin-bottom: 8px;">2. GESTIÓN OPERATIVA (TAREAS)</h3>
         ${htmlTareas}
 
-        <h3 style="font-size: 13px; background: #e2e8f0; padding: 4px; border: 1px solid #cbd5e1; margin-top: 20px; margin-bottom: 8px;">4. NOVEDADES</h3>
+        <h3 style="font-size: 13px; background: #e2e8f0; padding: 4px; border: 1px solid #cbd5e1; margin-top: 20px; margin-bottom: 8px;">3. OTRAS NOVEDADES</h3>
         ${htmlNovedades}
     </div>
 </body>
 </html>`;
 
-            // Mostrar modal con el contenido y un mensaje de carga
             const modal = document.getElementById('pdfModal');
             const contentDiv = document.getElementById('pdfContent');
             contentDiv.innerHTML = `<div id="pdfLoading">Generando PDF, espere...</div>`;
             modal.classList.add('active');
 
-            // Crear un iframe oculto para renderizar el HTML y capturarlo
             const iframe = document.createElement('iframe');
             iframe.style.position = 'absolute';
             iframe.style.left = '-9999px';
@@ -658,9 +715,7 @@
             iframeDoc.write(bodyHTML);
             iframeDoc.close();
 
-            // Esperar a que cargue completamente
             setTimeout(() => {
-                // Capturar el contenido del iframe
                 html2canvas(iframeDoc.body, {
                     scale: 2,
                     useCORS: true,
@@ -669,7 +724,6 @@
                     width: 800,
                     height: iframeDoc.body.scrollHeight
                 }).then(canvas => {
-                    // Crear PDF
                     const { jsPDF } = window.jspdf;
                     const pdf = new jsPDF('p', 'mm', 'a4');
                     const imgData = canvas.toDataURL('image/jpeg', 0.95);
@@ -677,8 +731,6 @@
                     const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
                     pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
                     pdf.save(`Reporte_Turno_${d.fecha}.pdf`);
-
-                    // Limpiar
                     document.body.removeChild(iframe);
                     modal.classList.remove('active');
                 }).catch(err => {
@@ -690,14 +742,17 @@
             }, 500);
         }
 
-        // ========== FUNCIÓN ORIGINAL GENERAR CORREO (SIN MODIFICAR) ==========
+        // ========== GENERAR CORREO ==========
         function generateHandover() {
             const d = getFormData();
             if (!d.entrega || !d.recibe) { alert("Por favor, indique quién entrega y quién recibe."); return; }
 
-            // 1. HTML Producción
             let htmlProduccion = "";
+            let globalTotalDowntime = 0;
+
             d.produccion.forEach(p => {
+                if (p.estado === 'No programada') return;
+
                 let statusColor = p.estado === 'Operando' ? '#059669' : (p.estado === 'Standby' ? '#d97706' : '#dc2626');
                 let headerEmpaque = p.empaque ? ` &nbsp;|&nbsp; <span style="color: #475569; font-size: 11px; font-weight: normal;">Tolva Empaque: <strong style="color: #1e293b;">${p.empaque}</strong></span>` : '';
                 
@@ -726,30 +781,50 @@
                             </tr>
                         </table>`;
                 } else {
-                    if (p.estado !== 'Detenido') {
-                        let partes = [];
-                        if (p.prod) partes.push(`producción de <strong>${p.prod}</strong>`);
-                        if (p.lotes) partes.push(`bajo el lote <strong>${p.lotes}</strong>`);
-                        if (p.empaque) partes.push(`tolva de empaque en <strong>${p.empaque}</strong>`);
-                        if (p.flujo) partes.push(`a flujo de <strong>${p.flujo}</strong>`);
-                        if (p.presion) partes.push(`presión intercambiador: <strong>${p.presion}</strong>`);
-                        if (p.vacio) partes.push(`vacío en <strong>${p.vacio}</strong>`);
-                        if (p.temp) partes.push(`temp camisas en <strong>${p.temp}</strong>`);
-                        
-                        let chillers = [];
-                        if (p.chillere) chillers.push(`<strong>${p.chillere}</strong> (Ent)`);
-                        if (p.chillerf) chillers.push(`<strong>${p.chillerf}</strong> (Sal)`);
-                        if (chillers.length > 0) partes.push(`agua de chiller en ${formatListWithY(chillers)}`);
-                        
-                        if (p.checks && p.checks.length > 0) {
-                            if (p.proceso === 'S10000') partes.push(`trabajando desde <strong>${formatListWithY(p.checks)}</strong>`);
-                            if (p.proceso === 'S6000') partes.push(`alimentando de <strong>${formatListWithY(p.checks)}</strong>`);
-                        }
-
-                        let textoParametros = formatListWithY(partes);
-                        let leyenda = `Línea <strong>${p.proceso}</strong> se entrega <strong>${p.estado.toLowerCase()}</strong>${textoParametros ? ' con ' + textoParametros : ''}.`;
-                        htmlProduccion += `<div style="font-family: Verdana, sans-serif; font-size: 11px; color: #1e293b; text-align: left; margin-bottom: 6px;">${leyenda}</div>`;
+                    let partes = [];
+                    if (p.prod) partes.push(`producción de <strong>${p.prod}</strong>`);
+                    if (p.lotes) partes.push(`bajo el lote <strong>${p.lotes}</strong>`);
+                    if (p.empaque) partes.push(`tolva de empaque en <strong>${p.empaque}</strong>`);
+                    if (p.flujo) partes.push(`a flujo de <strong>${p.flujo}</strong>`);
+                    if (p.presion) partes.push(`presión intercambiador: <strong>${p.presion}</strong>`);
+                    if (p.vacio) partes.push(`vacío en <strong>${p.vacio}</strong>`);
+                    if (p.temp) partes.push(`temp camisas en <strong>${p.temp}</strong>`);
+                    
+                    let chillers = [];
+                    if (p.chillere) chillers.push(`<strong>${p.chillere}</strong> (Ent)`);
+                    if (p.chillerf) chillers.push(`<strong>${p.chillerf}</strong> (Sal)`);
+                    if (chillers.length > 0) partes.push(`agua de chiller en ${formatListWithY(chillers)}`);
+                    
+                    if (p.checks && p.checks.length > 0) {
+                        if (p.proceso === 'S10000') partes.push(`trabajando desde <strong>${formatListWithY(p.checks)}</strong>`);
+                        if (p.proceso === 'S6000') partes.push(`alimentando de <strong>${formatListWithY(p.checks)}</strong>`);
                     }
+
+                    let textoParametros = formatListWithY(partes);
+                    let leyenda = `Línea <strong>${p.proceso}</strong> se entrega <strong>${p.estado.toLowerCase()}</strong>${textoParametros ? ' con ' + textoParametros : ''}.`;
+                    htmlProduccion += `<div style="font-family: Verdana, sans-serif; font-size: 11px; color: #1e293b; text-align: left; margin-bottom: 6px;">${leyenda}</div>`;
+                }
+
+                if(p.downtime && p.downtime.length > 0) {
+                    let procDowntime = 0;
+                    htmlProduccion += `<table style="width: 100%; border-collapse: collapse; font-family: Verdana, sans-serif; font-size: 11px; margin-bottom: 6px; margin-top: 8px;">
+                        <tr style="background-color: #f1f5f9; text-align: left;">
+                            <th style="padding: 3px; border: 1px solid #cbd5e1;">Falla en Equipo</th>
+                            <th style="padding: 3px; border: 1px solid #cbd5e1;">Minutos</th>
+                            <th style="padding: 3px; border: 1px solid #cbd5e1;">Causa</th>
+                            <th style="padding: 3px; border: 1px solid #cbd5e1;">Acción Tomada</th>
+                        </tr>`;
+                    p.downtime.forEach(dt => {
+                        if(dt.minutos) { procDowntime += parseInt(dt.minutos); globalTotalDowntime += parseInt(dt.minutos); }
+                        htmlProduccion += `<tr>
+                            <td style="padding: 3px; border: 1px solid #cbd5e1; font-weight: bold;">${dt.equipo}</td>
+                            <td style="padding: 3px; border: 1px solid #cbd5e1; color: #dc2626;">${dt.minutos}</td>
+                            <td style="padding: 3px; border: 1px solid #cbd5e1;">${dt.causa}</td>
+                            <td style="padding: 3px; border: 1px solid #cbd5e1;">${dt.accion}</td>
+                        </tr>`;
+                    });
+                    htmlProduccion += `</table>`;
+                    htmlProduccion += `<div style="color: #b91c1c; font-weight: bold; font-size: 11px; margin-bottom: 4px;">Paro total en ${p.proceso}: ${procDowntime} min.</div>`;
                 }
 
                 if(p.obs) {
@@ -759,33 +834,10 @@
                 htmlProduccion += `</div></div>`;
             });
 
-            // 2. HTML Tiempos Muertos
-            let totalDowntime = 0;
-            let htmlDowntime = "";
-            if(d.downtime.length > 0) {
-                htmlDowntime = `<table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 10px;">
-                    <tr style="background-color: #f8fafc; text-align: left;">
-                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Equipo</th>
-                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Min</th>
-                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Causa</th>
-                        <th style="padding: 4px; border: 1px solid #cbd5e1;">Acción</th>
-                    </tr>`;
-                d.downtime.forEach(dt => {
-                    if(dt.minutos) totalDowntime += parseInt(dt.minutos);
-                    htmlDowntime += `<tr>
-                        <td style="padding: 4px; border: 1px solid #cbd5e1; font-weight: bold;">${dt.equipo}</td>
-                        <td style="padding: 4px; border: 1px solid #cbd5e1; color: #dc2626;">${dt.minutos}</td>
-                        <td style="padding: 4px; border: 1px solid #cbd5e1;">${dt.causa}</td>
-                        <td style="padding: 4px; border: 1px solid #cbd5e1;">${dt.accion}</td>
-                    </tr>`;
-                });
-                htmlDowntime += `</table>`;
-                htmlDowntime = `<div style="color: #b91c1c; font-weight: bold; font-size: 12px; margin-bottom: 8px;">Total tiempo de paro: ${totalDowntime} minutos.</div>` + htmlDowntime;
-            } else {
-                htmlDowntime = `<p style="font-size: 12px; color: #475569;">Operación continua, sin fallas registradas.</p>`;
+            if(globalTotalDowntime > 0) {
+                 htmlProduccion += `<div style="margin-top: 5px; text-align: right; color: #b91c1c; font-weight: bold; font-size: 12px; margin-bottom: 8px;">TOTAL PLANTA: ${globalTotalDowntime} min en paro reportado.</div>`;
             }
 
-            // 3. HTML Tareas (incluye finalizadas en verde y los campos de acción corregidos)
             let htmlTareas = "";
             if(d.tareas.length > 0) {
                 htmlTareas = `<table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 10px;">
@@ -798,19 +850,23 @@
                     </tr>`;
                 d.tareas.forEach(t => {
                     let pColor = t.prio === 'Alta' ? '#dc2626' : (t.prio === 'Media' ? '#d97706' : '#059669');
-                    let sStyle = t.estado === 'Finalizada' ? 'color: #059669; font-weight: bold; background-color: #ecfdf5;' : '';
+                    let sStyle = '';
+                    if (t.estado === 'Completado') sStyle = 'color: #059669; font-weight: bold; background-color: #ecfdf5;';
+                    else if (t.estado === 'Cancelado') sStyle = 'color: #dc2626; font-weight: bold; background-color: #fef2f2;';
+                    else if (t.estado === 'On-hold') sStyle = 'color: #d97706; font-weight: bold; background-color: #fffbeb;';
+                    else if (t.estado === 'En proceso') sStyle = 'color: #2563eb; font-weight: bold; background-color: #eff6ff;';
                     
                     let accStr = [];
                     if (t.inmediata) accStr.push(`<strong>Inmediata:</strong> ${t.inmediata}`);
                     if (t.correctiva) accStr.push(`<strong>Correctiva:</strong> ${t.correctiva}`);
                     let accionesFormatted = accStr.length > 0 ? accStr.join('<br>') : "[Sin acciones registradas]";
 
-                    htmlTareas += `<tr style="${t.estado === 'Finalizada' ? 'background-color: #f8fafc;' : ''}">
+                    htmlTareas += `<tr style="${t.estado === 'Completado' ? 'background-color: #f8fafc;' : ''}">
                         <td style="padding: 4px; border: 1px solid #cbd5e1;">${t.proceso}</td>
                         <td style="padding: 4px; border: 1px solid #cbd5e1; font-weight: bold; color: ${pColor};">${t.prio}</td>
                         <td style="padding: 4px; border: 1px solid #cbd5e1;">${t.desc}</td>
                         <td style="padding: 4px; border: 1px solid #cbd5e1; font-size: 11px;">${accionesFormatted}</td>
-                        <td style="padding: 4px; border: 1px solid #cbd5e1; ${sStyle}">${t.resp} (${t.estado})</td>
+                        <td style="padding: 4px; border: 1px solid #cbd5e1; ${sStyle}">${t.resp}<br><strong>(${t.estado})</strong></td>
                     </tr>`;
                 });
                 htmlTareas += `</table>`;
@@ -818,7 +874,6 @@
                 htmlTareas = `<p style="font-size: 12px; color: #475569;">Sin tareas registradas.</p>`;
             }
 
-            // 4. HTML Novedades
             let htmlNovedades = "";
             if(d.novedades.length > 0) {
                 htmlNovedades = `<ul style="margin: 0; padding-left: 20px; font-size: 12px;">`;
@@ -844,16 +899,13 @@
             </div>
         </div>
         
-        <h3 style="font-size: 13px; background: #e2e8f0; padding: 4px; border: 1px solid #cbd5e1; margin-bottom: 8px;">1. PARÁMETROS DE PRODUCCIÓN</h3>
+        <h3 style="font-size: 13px; background: #e2e8f0; padding: 4px; border: 1px solid #cbd5e1; margin-bottom: 8px;">1. PARÁMETROS DE PRODUCCIÓN Y NOVEDADES TÉCNICAS</h3>
         ${htmlProduccion}
 
-        <h3 style="font-size: 13px; background: #e2e8f0; padding: 4px; border: 1px solid #cbd5e1; margin-top: 20px; margin-bottom: 8px;">2. TIEMPOS MUERTOS</h3>
-        ${htmlDowntime}
-
-        <h3 style="font-size: 13px; background: #e2e8f0; padding: 4px; border: 1px solid #cbd5e1; margin-top: 20px; margin-bottom: 8px;">3. GESTIÓN OPERATIVA (TAREAS)</h3>
+        <h3 style="font-size: 13px; background: #e2e8f0; padding: 4px; border: 1px solid #cbd5e1; margin-top: 20px; margin-bottom: 8px;">2. GESTIÓN OPERATIVA (TAREAS)</h3>
         ${htmlTareas}
 
-        <h3 style="font-size: 13px; background: #e2e8f0; padding: 4px; border: 1px solid #cbd5e1; margin-top: 20px; margin-bottom: 8px;">4. NOVEDADES</h3>
+        <h3 style="font-size: 13px; background: #e2e8f0; padding: 4px; border: 1px solid #cbd5e1; margin-top: 20px; margin-bottom: 8px;">3. OTRAS NOVEDADES</h3>
         ${htmlNovedades}
     </div>
 </body>
